@@ -3,11 +3,11 @@ import numpy as np
 import datetime
 import matplotlib.pyplot as plt
 import struct
-from obspy.core import Stream, Trace
+from obspy.core import Stream, Trace, UTCDateTime
 import os
 
 
-def readFairFieldRG16(filename):
+def readFairFieldRG16(filename, start=None, end=None, head_only=False):
     f = open(filename, 'rb')
     f.seek(10)
     year1 = ord(f.read(1))
@@ -18,12 +18,14 @@ def readFairFieldRG16(filename):
     byte12 = ord(f.read(1))
     genhdrblocks = int(np.floor(byte12/16)+1)
     day_msn = byte12-(genhdrblocks-1)*16
-    
+    # print "day_msn:",day_msn
     byte13 = ord(f.read(1))
+    # print "byte_13", byte13
     day_lsb1 = np.floor(byte13/16)
     day_lsb2 = byte13-day_lsb1*16
     day_lsb3 = int(day_msn*100+day_lsb1*10+day_lsb2)
-    
+    # print day_lsb3
+    # print year
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(days=day_lsb3)
 
     times = f.read(3)
@@ -31,8 +33,9 @@ def readFairFieldRG16(filename):
     times1 = np.floor(times/16)
     times2 = times-times1*16
     times3 = times1*10 + times2
+    # print date
     starttime = date + datetime.timedelta(days=times3[0]/24+times3[1]/(24*60)+times3[2]/(24*60*60))
-    
+    # print starttime
     f.seek(6, 1) # 1 is for COF
     sample_rate = ord(f.read(1))/16
     
@@ -71,11 +74,11 @@ def readFairFieldRG16(filename):
     f.seek((genhdrblocks+channel_sets+1)*32+16,0)
     num_records = struct.unpack('>i', f.read(4))[0]
     
-    print "t1", f.tell()
-    print "hdr mul:", genhdrblocks+ext_blocks3[0]+ext_blocks3[1]+channel_sets
+    # print "t1", f.tell()
+    # print "hdr mul:", genhdrblocks+ext_blocks3[0]+ext_blocks3[1]+channel_sets
     
     f.seek((genhdrblocks+ext_blocks3[0]+ext_blocks3[1]+channel_sets)*32+30, 0)
-    print "t2", f.tell()
+    # print "t2", f.tell()
     if channel_sets < 3:
         tmp1 = struct.unpack('>I', f.read(4))[0]*256.
         tmp2 = struct.unpack('>B', f.read(1))[0]
@@ -104,7 +107,7 @@ def readFairFieldRG16(filename):
     tr_day = struct.unpack('>Q', f.read(8))[0]/(1e6*60*60*24) # datenum ?
  
     f.seek(254+4*32+16, 0)
-    print struct.unpack('>I', f.read(4))[0]
+    # print struct.unpack('>I', f.read(4))[0]
     
     f.seek((genhdrblocks+ext_blocks3[0]+ext_blocks3[1]+channel_sets)*32+9, 0)
     ext_trace_blks = ord(f.read(1))
@@ -135,6 +138,7 @@ def readFairFieldRG16(filename):
     
     header_length = (genhdrblocks+ext_blocks3[0]+ext_blocks3[1]+channel_sets)*32
     
+    traces = []
     for i in range(num_traces):
         f.seek(header_length + i*(20+ext_trace_blks*32) + i*num_samples*4, 0)
         th = f.read(20)
@@ -152,31 +156,42 @@ def readFairFieldRG16(filename):
         # Processing Time Header (block 3)
         shot, skew_time, corrected_drift, remaining_drift = struct.unpack('>4Q', th03)
         shot = datetime.datetime(1970,1,1) + datetime.timedelta(microseconds=shot)
-        print "Trace data starting at", shot
-        # Processing Data
-        rudata = np.array(struct.unpack('>%if'%num_samples, f.read(num_samples*4)))
-        data[i] = rudata
-    data = np.ravel(data)
+        if start is None or shot >= start.datetime:
+            if end is None or shot <= end.datetime:
+                # print "gain:", ord(th04[10]), "dB"
+                # print "Trace data starting at", shot
+                # Processing Data
+                if head_only:
+                    rudata = np.zeros(37250)
+                else:
+                    rudata = np.array(struct.unpack('>%if'%num_samples, f.read(num_samples*4)))
+                    
+                t = Trace(data=rudata)
+                t.stats.sampling_rate = 1.e3 / sample_rate
+                t.stats.starttime = shot
+                t.stats.station = "%02i.%02i" % (recline, recstation)
+                traces.append(t)
+        if shot > end.datetime:
+            break
     
-    
-    t = Trace(data=data)
-    t.stats.sampling_rate = 1.e3 / sample_rate
-    t.stats.starttime = starttime
-    t.stats.station = "%02i.%02i" % (recline, recstation)
-    s = Stream(traces=[t,])
+    s = Stream(traces=traces)
     return s
         
 if __name__ == "__main__":
-    folder = r'C:/Users/thomas/Desktop/Work In Progress/VolcArray/Data/test_amplification_segd'
-    first = True
-    for file in sorted(os.listdir(folder))[:1]:
-        tmp = readFairFieldRG16(os.path.join(folder, file))
-        #~ tmp.write(os.path.join(folder, file.replace('rg16','SAC')),format='SAC')
-        if first:
-            s = tmp
-            first = False
-        else:
-            s += tmp
-    print s
-    s.plot()
+    start = UTCDateTime('2014-07-22Z23:10:00.00')
+    end = UTCDateTime('2014-07-22Z23:30:00.00')
+    file = r'R11_1.1.0.rg16'
+    prim = readFairFieldRG16(file,start=start,end=end)
+    print prim
+    prim.merge()
+    
+    file = r'R11_1s.1.0.rg16'
+    secon = readFairFieldRG16(file,start=start,end=end)
+    print secon
+    secon.merge()
+    for t in secon:
+        t.stats.station += "s"
+    
+    prim += secon
+    prim.plot()
     
