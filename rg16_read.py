@@ -26,7 +26,7 @@ def readFairFieldRG16(filename, start=None, end=None, head_only=False):
     day_lsb3 = int(day_msn*100+day_lsb1*10+day_lsb2)
     # print day_lsb3
     # print year
-    date = datetime.datetime(year, 1, 1) + datetime.timedelta(days=day_lsb3)
+    date = datetime.datetime(year, 1, 1) + datetime.timedelta(days=day_lsb3-1)
 
     times = f.read(3)
     times = np.fromstring(times, np.uint8)
