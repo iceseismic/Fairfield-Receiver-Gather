@@ -131,7 +131,7 @@ def readFairFieldRG16(filename, start=None, end=None, head_only=False):
     num_traces = num_records*channel_sets
     f.seek((genhdrblocks+ext_blocks3[0]+ext_blocks3[1]+channel_sets)*32,0)
     num_samples= int(record_length/sample_rate)
-
+    
     header_length = (genhdrblocks+ext_blocks3[0]+ext_blocks3[1]+channel_sets)*32
     traces = []
     for i in range(num_traces):
@@ -151,20 +151,21 @@ def readFairFieldRG16(filename, start=None, end=None, head_only=False):
         # th08 = f.read(32) #Trace Header 8 (test config)
         # th09 = f.read(32) #Trace Header 9 (test config)
         # th10 = f.read(32) #Trace Header 10 (test config)
-        
-        # Processing Time Header (block 3)
+
         shot, skew_time, corrected_drift, remaining_drift = struct.unpack('>4Q', trace_headers[2])
         shot = datetime.datetime(1970,1,1) + datetime.timedelta(microseconds=shot)
         sensor_type = ord(trace_headers[0][20])
+        
+        num_samples_in_trace = struct.unpack('>H', trace_headers[0][7:9])[0]*256 + ord(trace_headers[0][9])
         if start is None or shot >= start.datetime:
             if end is None or shot <= end.datetime:
                 # print "gain:", ord(th04[10]), "dB"
                 # print "Trace data starting at", shot
                 # Processing Data
                 if head_only:
-                    rudata = np.zeros(37250)
+                    rudata = np.zeros(num_samples_in_trace)
                 else:
-                    rudata = np.array(struct.unpack('>%if'%(num_samples), f.read(num_samples*4) ))
+                    rudata = np.array(struct.unpack('>%if'%(num_samples_in_trace), f.read(num_samples_in_trace*4) ))
                     
                 t = Trace(data=rudata)
                 t.stats.sampling_rate = 1.e3 / sample_rate
@@ -186,6 +187,7 @@ if __name__ == "__main__":
     file = r'C:\Users\tlecocq\Desktop\Oner\1.fcnt'
     prim = readFairFieldRG16(file)
     print prim
+    prim.plot()
     # prim.merge()
     
     # file = r'R11_1s.1.0.rg16'
@@ -197,5 +199,5 @@ if __name__ == "__main__":
         # t.stats.station += "s"
     
     # prim += secon
-    prim.plot()
+    
     
