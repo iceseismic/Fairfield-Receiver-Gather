@@ -155,7 +155,7 @@ def readFairFieldRG16(filename, start=None, end=None, head_only=False):
         # Processing Time Header (block 3)
         shot, skew_time, corrected_drift, remaining_drift = struct.unpack('>4Q', trace_headers[2])
         shot = datetime.datetime(1970,1,1) + datetime.timedelta(microseconds=shot)
-
+        sensor_type = ord(trace_headers[0][20])
         if start is None or shot >= start.datetime:
             if end is None or shot <= end.datetime:
                 # print "gain:", ord(th04[10]), "dB"
@@ -170,6 +170,7 @@ def readFairFieldRG16(filename, start=None, end=None, head_only=False):
                 t.stats.sampling_rate = 1.e3 / sample_rate
                 t.stats.starttime = shot
                 t.stats.station = "%02i.%02i" % (recline, recstation)
+                t.stats.channel = sensor_type
                 traces.append(t)
                 # t.plot(method='full')
         if end is not None:
